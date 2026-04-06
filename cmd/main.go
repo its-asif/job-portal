@@ -9,6 +9,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/its-asif/job-portal/db"
+	"github.com/its-asif/job-portal/internal/handlers"
+	"github.com/its-asif/job-portal/internal/repository"
 )
 
 func main() {
@@ -31,6 +33,11 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("hello world"))
 	}).Methods(http.MethodGet)
+
+	userRepo := repository.NewUserRepository(dbConn)
+	userHandler := handlers.NewUserHandler(userRepo)
+	r.HandleFunc("/register", userHandler.Register).Methods(http.MethodPost)
+	r.HandleFunc("/login", userHandler.Login).Methods(http.MethodPost)
 
 	log.Println("server started on :8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {
