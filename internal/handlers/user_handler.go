@@ -33,13 +33,13 @@ func NewUserHandler(repo *repository.UserRepository) *UserHandler {
 
 func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if h.Repo == nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "database is not configured"})
+		respondWithError(w, http.StatusInternalServerError, "database is not configured")
 		return
 	}
 
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		respondWithError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -49,7 +49,7 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	req.Role = strings.TrimSpace(req.Role)
 
 	if req.Email == "" || req.Password == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "email and password are required"})
+		respondWithError(w, http.StatusBadRequest, "email and password are required")
 		return
 	}
 
@@ -59,7 +59,7 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to hash password"})
+		respondWithError(w, http.StatusInternalServerError, "failed to hash password")
 		return
 	}
 
@@ -72,56 +72,50 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.Repo.CreateUser(user); err != nil {
 		if errors.Is(err, repository.ErrDuplicateEmail) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "email already exists"})
+			respondWithError(w, http.StatusConflict, "email already exists")
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create user"})
+		respondWithError(w, http.StatusInternalServerError, "failed to create user")
 		return
 	}
 
 	user.Password = ""
-	writeJSON(w, http.StatusCreated, user)
+	respondWithJSON(w, http.StatusCreated, user)
 }
 
 func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if h.Repo == nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "database is not configured"})
+		respondWithError(w, http.StatusInternalServerError, "database is not configured")
 		return
 	}
 
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		respondWithError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	req.Email = strings.TrimSpace(req.Email)
 	req.Password = strings.TrimSpace(req.Password)
 	if req.Email == "" || req.Password == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "email and password are required"})
+		respondWithError(w, http.StatusBadRequest, "email and password are required")
 		return
 	}
 
 	user, err := h.Repo.GetUserByEmail(req.Email)
 	if err != nil {
 		if errors.Is(err, repository.ErrUserNotFound) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
+			respondWithError(w, http.StatusUnauthorized, "invalid email or password")
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to login"})
+		respondWithError(w, http.StatusInternalServerError, "failed to login")
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
+		respondWithError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"message": "login successful"})
-}
-
-func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	respondWithJSON(w, http.StatusOK, map[string]string{"message": "login successful"})
 }
