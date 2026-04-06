@@ -73,3 +73,73 @@ func (r *UserRepository) GetUserByEmail(email string) (*models.User, error) {
 
 	return &user, nil
 }
+
+func (r *UserRepository) GetUserByID(id int) (*models.User, error) {
+	if r == nil || r.DB == nil {
+		return nil, errors.New("database is not configured")
+	}
+
+	query := `
+		SELECT id, name, email, password, role, created_at
+		FROM users
+		WHERE id = $1
+	`
+
+	var user models.User
+	err := r.DB.QueryRow(query, id).Scan(
+		&user.ID,
+		&user.Name,
+		&user.Email,
+		&user.Password,
+		&user.Role,
+		&user.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+func (r *UserRepository) GetAllUsers() ([]models.User, error) {
+	if r == nil || r.DB == nil {
+		return nil, errors.New("database is not configured")
+	}
+
+	query := `
+		SELECT id, name, email, password, role, created_at
+		FROM users
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make([]models.User, 0)
+	for rows.Next() {
+		var user models.User
+		if err := rows.Scan(
+			&user.ID,
+			&user.Name,
+			&user.Email,
+			&user.Password,
+			&user.Role,
+			&user.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}

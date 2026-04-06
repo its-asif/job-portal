@@ -13,7 +13,8 @@ import (
 )
 
 type JobHandler struct {
-	Repo *repository.JobRepository
+	Repo            *repository.JobRepository
+	ApplicationRepo *repository.ApplicationRepository
 }
 
 type createJobRequest struct {
@@ -32,8 +33,11 @@ type updateJobRequest struct {
 	Company     *string `json:"company"`
 }
 
-func NewJobHandler(repo *repository.JobRepository) *JobHandler {
-	return &JobHandler{Repo: repo}
+func NewJobHandler(repo *repository.JobRepository, applicationRepo *repository.ApplicationRepository) *JobHandler {
+	return &JobHandler{
+		Repo:            repo,
+		ApplicationRepo: applicationRepo,
+	}
 }
 
 func (h *JobHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
@@ -92,6 +96,70 @@ func (h *JobHandler) GetAllJobs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, jobs)
+}
+
+func (h *JobHandler) ApplyToJob(w http.ResponseWriter, r *http.Request) {
+	if h.ApplicationRepo == nil {
+		respondWithError(w, http.StatusInternalServerError, "database is not configured")
+		return
+	}
+
+	jobID, err := parseJobID(r)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "invalid job id")
+		return
+	}
+
+	if h.Repo == nil {
+		respondWithError(w, http.StatusInternalServerError, "database is not configured")
+		return
+	}
+
+	if _, err := h.Repo.GetJobByID(jobID); err != nil {
+		if errors.Is(err, repository.ErrJobNotFound) {
+			respondWithError(w, http.StatusNotFound, "job not found")
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "failed to apply to job")
+		return
+	}
+
+	application, err := h.ApplicationRepo.CreateApplication(jobID, 1)
+	if err != nil {
+		if errors.Is(err, repository.ErrAlreadyApplied) {
+			respondWithError(w, http.StatusConflict, "already applied to this job")
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "failed to apply to job")
+		return
+	}
+
+	respondWithJSON(w, http.StatusCreated, application)
+}
+
+func (h *JobHandler) GetApplicationsByJobID(w http.ResponseWriter, r *http.Request) {
+	if h.ApplicationRepo == nil {
+		respondWithError(w, http.StatusInternalServerError, "database is not configured")
+		return
+	}
+
+	jobID, err := parseJobID(r)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "invalid job id")
+		return
+	}
+
+	applications, err := h.ApplicationRepo.GetApplicationsByJobID(jobID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "failed to fetch applications")
+		return
+	}
+
+	if applications == nil {
+		applications = make([]models.Application, 0)
+	}
+
+	respondWithJSON(w, http.StatusOK, applications)
 }
 
 func (h *JobHandler) GetJobByID(w http.ResponseWriter, r *http.Request) {

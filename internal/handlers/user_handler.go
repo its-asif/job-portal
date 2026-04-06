@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/gorilla/mux"
 	"github.com/its-asif/job-portal/internal/models"
 	"github.com/its-asif/job-portal/internal/repository"
 	"golang.org/x/crypto/bcrypt"
@@ -118,4 +120,58 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, map[string]string{"message": "login successful"})
+}
+
+func (h *UserHandler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
+	if h.Repo == nil {
+		respondWithError(w, http.StatusInternalServerError, "database is not configured")
+		return
+	}
+
+	users, err := h.Repo.GetAllUsers()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "failed to fetch users")
+		return
+	}
+
+	if users == nil {
+		users = make([]models.User, 0)
+	}
+
+	for i := range users {
+		users[i].Password = ""
+	}
+
+	respondWithJSON(w, http.StatusOK, users)
+}
+
+func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
+	if h.Repo == nil {
+		respondWithError(w, http.StatusInternalServerError, "database is not configured")
+		return
+	}
+
+	userID, err := parseUserID(r)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	user, err := h.Repo.GetUserByID(userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			respondWithError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "failed to fetch user")
+		return
+	}
+
+	user.Password = ""
+	respondWithJSON(w, http.StatusOK, user)
+}
+
+func parseUserID(r *http.Request) (int, error) {
+	userIDParam := mux.Vars(r)["id"]
+	return strconv.Atoi(userIDParam)
 }

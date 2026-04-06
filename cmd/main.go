@@ -38,14 +38,19 @@ func main() {
 	userHandler := handlers.NewUserHandler(userRepo)
 	r.HandleFunc("/register", userHandler.Register).Methods(http.MethodPost)
 	r.HandleFunc("/login", userHandler.Login).Methods(http.MethodPost)
+	r.HandleFunc("/users", userHandler.GetAllUsers).Methods(http.MethodGet)
+	r.HandleFunc("/users/{id}", userHandler.GetUserByID).Methods(http.MethodGet)
 
 	jobRepo := repository.NewJobRepository(dbConn)
-	jobHandler := handlers.NewJobHandler(jobRepo)
+	applicationRepo := repository.NewApplicationRepository(dbConn)
+	jobHandler := handlers.NewJobHandler(jobRepo, applicationRepo)
 	r.HandleFunc("/jobs", jobHandler.CreateJob).Methods(http.MethodPost)
 	r.HandleFunc("/jobs", jobHandler.GetAllJobs).Methods(http.MethodGet)
 	r.HandleFunc("/jobs/{id}", jobHandler.GetJobByID).Methods(http.MethodGet)
 	r.HandleFunc("/jobs/{id}", jobHandler.DeleteJob).Methods(http.MethodDelete)
 	r.HandleFunc("/jobs/{id}", jobHandler.UpdateJob).Methods(http.MethodPut)
+	r.HandleFunc("/jobs/{id}/apply", jobHandler.ApplyToJob).Methods(http.MethodPost)
+	r.HandleFunc("/jobs/{id}/applications", jobHandler.GetApplicationsByJobID).Methods(http.MethodGet)
 
 	log.Println("server started on :8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {
