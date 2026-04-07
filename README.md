@@ -11,6 +11,7 @@ Current implementation includes:
 - Employer-only application status updates
 - Unit tests for handlers, middleware, and JWT
 - Repository integration test scaffold with TEST_DB_URL
+- Swagger/OpenAPI docs with Swagger UI
 
 ## Tech Stack
 
@@ -102,6 +103,24 @@ Rollback one migration:
 ```bash
 make migrate-down DB_URL='<your_db_url>'
 ```
+
+## API Documentation (Swagger)
+
+Generate Swagger docs:
+
+```bash
+make docs
+```
+
+Start the API and open Swagger UI:
+
+```text
+http://localhost:8080/docs/index.html
+```
+
+Notes:
+- Regenerate docs after endpoint/comment changes.
+- Protected endpoints use Bearer token in the `Authorization` header.
 
 ## Testing
 

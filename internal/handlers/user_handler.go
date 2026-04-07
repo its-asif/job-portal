@@ -35,6 +35,18 @@ func NewUserHandler(repo *repository.UserRepository) *UserHandler {
 	return &UserHandler{Repo: repo}
 }
 
+// Register godoc
+// @Summary Register a new user
+// @Description Register a new employer or jobseeker account.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param payload body models.RegisterRequest true "Register payload"
+// @Success 201 {object} models.User
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 409 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /register [post]
 func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if h.Repo == nil {
 		respondWithError(w, http.StatusInternalServerError, "database is not configured")
@@ -92,6 +104,18 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusCreated, user)
 }
 
+// Login godoc
+// @Summary Login user
+// @Description Validate credentials and return JWT token.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param payload body models.LoginRequest true "Login payload"
+// @Success 200 {object} models.TokenResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /login [post]
 func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if h.Repo == nil {
 		respondWithError(w, http.StatusInternalServerError, "database is not configured")
@@ -135,6 +159,14 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, map[string]string{"token": token})
 }
 
+// GetAllUsers godoc
+// @Summary List users
+// @Description Get all registered users.
+// @Tags users
+// @Produce json
+// @Success 200 {array} models.User
+// @Failure 500 {object} models.ErrorResponse
+// @Router /users [get]
 func (h *UserHandler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
 	if h.Repo == nil {
 		respondWithError(w, http.StatusInternalServerError, "database is not configured")
@@ -158,6 +190,17 @@ func (h *UserHandler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, users)
 }
 
+// GetUserByID godoc
+// @Summary Get user by ID
+// @Description Get a single user by ID.
+// @Tags users
+// @Produce json
+// @Param id path int true "User ID"
+// @Success 200 {object} models.User
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /users/{id} [get]
 func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 	if h.Repo == nil {
 		respondWithError(w, http.StatusInternalServerError, "database is not configured")
@@ -184,6 +227,17 @@ func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, user)
 }
 
+// GetMe godoc
+// @Summary Get current user profile
+// @Description Return profile of currently authenticated user.
+// @Tags users
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} models.User
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /me [get]
 func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	if h.Repo == nil {
 		respondWithError(w, http.StatusInternalServerError, "database is not configured")

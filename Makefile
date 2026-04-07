@@ -5,7 +5,7 @@ MIGRATE_IMAGE ?= migrate/migrate:v4.18.3
 MIGRATIONS_DIR ?= $(CURDIR)/db/migrations
 MIGRATE_NETWORK ?= host
 
-.PHONY: migrate-up migrate-down test
+.PHONY: migrate-up migrate-down test docs
 
 migrate-up:
 	@if [ -z "$(DB_URL)" ]; then echo "DB_URL is not set"; exit 1; fi
@@ -25,3 +25,6 @@ migrate-down:
 
 test:
 	go test ./... -cover
+
+docs:
+	go run github.com/swaggo/swag/cmd/swag@latest init -g cmd/main.go -o docs

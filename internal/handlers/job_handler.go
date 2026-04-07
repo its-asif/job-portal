@@ -45,6 +45,20 @@ func NewJobHandler(repo *repository.JobRepository, applicationRepo *repository.A
 	}
 }
 
+// CreateJob godoc
+// @Summary Create job
+// @Description Create a job post. Employer role required.
+// @Tags jobs
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param payload body models.CreateJobRequest true "Create job payload"
+// @Success 201 {object} models.Job
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 403 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /jobs [post]
 func (h *JobHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 	if h.Repo == nil {
 		respondWithError(w, http.StatusInternalServerError, "database is not configured")
@@ -90,6 +104,14 @@ func (h *JobHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusCreated, job)
 }
 
+// GetAllJobs godoc
+// @Summary List jobs
+// @Description Get all jobs.
+// @Tags jobs
+// @Produce json
+// @Success 200 {array} models.Job
+// @Failure 500 {object} models.ErrorResponse
+// @Router /jobs [get]
 func (h *JobHandler) GetAllJobs(w http.ResponseWriter, r *http.Request) {
 	if h.Repo == nil {
 		respondWithError(w, http.StatusInternalServerError, "database is not configured")
@@ -109,6 +131,21 @@ func (h *JobHandler) GetAllJobs(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, jobs)
 }
 
+// ApplyToJob godoc
+// @Summary Apply to a job
+// @Description Apply to a job by ID. Jobseeker role required.
+// @Tags applications
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Job ID"
+// @Success 201 {object} models.Application
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 403 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 409 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /jobs/{id}/apply [post]
 func (h *JobHandler) ApplyToJob(w http.ResponseWriter, r *http.Request) {
 	if h.ApplicationRepo == nil {
 		respondWithError(w, http.StatusInternalServerError, "database is not configured")
@@ -154,6 +191,16 @@ func (h *JobHandler) ApplyToJob(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusCreated, application)
 }
 
+// GetApplicationsByJobID godoc
+// @Summary List applications for a job
+// @Description Get all applications submitted for a specific job.
+// @Tags applications
+// @Produce json
+// @Param id path int true "Job ID"
+// @Success 200 {array} models.Application
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /jobs/{id}/applications [get]
 func (h *JobHandler) GetApplicationsByJobID(w http.ResponseWriter, r *http.Request) {
 	if h.ApplicationRepo == nil {
 		respondWithError(w, http.StatusInternalServerError, "database is not configured")
@@ -179,6 +226,17 @@ func (h *JobHandler) GetApplicationsByJobID(w http.ResponseWriter, r *http.Reque
 	respondWithJSON(w, http.StatusOK, applications)
 }
 
+// GetJobByID godoc
+// @Summary Get job by ID
+// @Description Get one job by ID.
+// @Tags jobs
+// @Produce json
+// @Param id path int true "Job ID"
+// @Success 200 {object} models.Job
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /jobs/{id} [get]
 func (h *JobHandler) GetJobByID(w http.ResponseWriter, r *http.Request) {
 	if h.Repo == nil {
 		respondWithError(w, http.StatusInternalServerError, "database is not configured")
@@ -204,6 +262,20 @@ func (h *JobHandler) GetJobByID(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, job)
 }
 
+// DeleteJob godoc
+// @Summary Delete job
+// @Description Delete a job by ID. Employer role required.
+// @Tags jobs
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Job ID"
+// @Success 204
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 403 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /jobs/{id} [delete]
 func (h *JobHandler) DeleteJob(w http.ResponseWriter, r *http.Request) {
 	if h.Repo == nil {
 		respondWithError(w, http.StatusInternalServerError, "database is not configured")
@@ -228,6 +300,19 @@ func (h *JobHandler) DeleteJob(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// UpdateJob godoc
+// @Summary Update job
+// @Description Update one or more job fields by ID.
+// @Tags jobs
+// @Accept json
+// @Produce json
+// @Param id path int true "Job ID"
+// @Param payload body models.UpdateJobRequest true "Update job payload"
+// @Success 200 {object} models.Job
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /jobs/{id} [put]
 func (h *JobHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
 	if h.Repo == nil {
 		respondWithError(w, http.StatusInternalServerError, "database is not configured")
@@ -275,6 +360,22 @@ func (h *JobHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, updatedJob)
 }
 
+// UpdateApplicationStatus godoc
+// @Summary Update application status
+// @Description Update application status to reviewed, accepted, or rejected. Employer role required.
+// @Tags applications
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Application ID"
+// @Param payload body models.UpdateApplicationStatusRequest true "Update application status payload"
+// @Success 200 {object} models.Application
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 403 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /applications/{id}/status [put]
 func (h *JobHandler) UpdateApplicationStatus(w http.ResponseWriter, r *http.Request) {
 	if h.ApplicationRepo == nil {
 		respondWithError(w, http.StatusInternalServerError, "database is not configured")

@@ -1,3 +1,12 @@
+// @title Job Portal API
+// @version 1.0
+// @description Job portal backend API built with Go, Gorilla Mux, and PostgreSQL.
+// @host localhost:8080
+// @BasePath /
+// @schemes http
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 package main
 
 import (
@@ -7,11 +16,13 @@ import (
 	"os"
 	"strings"
 
+	_ "github.com/its-asif/job-portal/docs"
 	"github.com/gorilla/mux"
 	"github.com/its-asif/job-portal/db"
 	"github.com/its-asif/job-portal/internal/handlers"
 	"github.com/its-asif/job-portal/internal/middleware"
 	"github.com/its-asif/job-portal/internal/repository"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 func main() {
@@ -30,6 +41,7 @@ func main() {
 	}
 
 	r := mux.NewRouter()
+	r.PathPrefix("/docs/").Handler(httpSwagger.WrapHandler)
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("hello world"))
