@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/its-asif/job-portal/internal/middleware"
 	"github.com/its-asif/job-portal/internal/models"
 	"github.com/its-asif/job-portal/internal/repository"
 )
@@ -31,6 +32,10 @@ type updateJobRequest struct {
 	Location    *string `json:"location"`
 	Salary      *int64  `json:"salary"`
 	Company     *string `json:"company"`
+}
+
+type updateApplicationStatusRequest struct {
+	Status string `json:"status"`
 }
 
 func NewJobHandler(repo *repository.JobRepository, applicationRepo *repository.ApplicationRepository) *JobHandler {
@@ -62,13 +67,19 @@ func (h *JobHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	claims, ok := middleware.GetClaimsFromContext(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	job := &models.Job{
 		Title:       req.Title,
 		Description: req.Description,
 		Location:    req.Location,
 		Salary:      req.Salary,
 		Company:     req.Company,
-		PostedBy:    1,
+		PostedBy:    claims.UserID,
 	}
 
 	if err := h.Repo.CreateJob(job); err != nil {
@@ -124,7 +135,13 @@ func (h *JobHandler) ApplyToJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	application, err := h.ApplicationRepo.CreateApplication(jobID, 1)
+	claims, ok := middleware.GetClaimsFromContext(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	application, err := h.ApplicationRepo.CreateApplication(jobID, claims.UserID)
 	if err != nil {
 		if errors.Is(err, repository.ErrAlreadyApplied) {
 			respondWithError(w, http.StatusConflict, "already applied to this job")
@@ -258,6 +275,53 @@ func (h *JobHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, updatedJob)
 }
 
+func (h *JobHandler) UpdateApplicationStatus(w http.ResponseWriter, r *http.Request) {
+	if h.ApplicationRepo == nil {
+		respondWithError(w, http.StatusInternalServerError, "database is not configured")
+		return
+	}
+
+	claims, ok := middleware.GetClaimsFromContext(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	applicationID, err := parseApplicationID(r)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "invalid application id")
+		return
+	}
+
+	var req updateApplicationStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	req.Status = strings.TrimSpace(strings.ToLower(req.Status))
+	if req.Status != "reviewed" && req.Status != "accepted" && req.Status != "rejected" {
+		respondWithError(w, http.StatusBadRequest, "status must be reviewed, accepted, or rejected")
+		return
+	}
+
+	application, err := h.ApplicationRepo.UpdateApplicationStatus(applicationID, claims.UserID, req.Status)
+	if err != nil {
+		if errors.Is(err, repository.ErrApplicationNotFound) {
+			respondWithError(w, http.StatusNotFound, "application not found")
+			return
+		}
+		if errors.Is(err, repository.ErrEmployerNotAllowed) {
+			respondWithError(w, http.StatusForbidden, "forbidden")
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "failed to update application status")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, application)
+}
+
 func parseJobID(r *http.Request) (int, error) {
 	jobIDParam := mux.Vars(r)["id"]
 	jobID, err := strconv.Atoi(jobIDParam)
@@ -266,6 +330,16 @@ func parseJobID(r *http.Request) (int, error) {
 	}
 
 	return jobID, nil
+}
+
+func parseApplicationID(r *http.Request) (int, error) {
+	applicationIDParam := mux.Vars(r)["id"]
+	applicationID, err := strconv.Atoi(applicationIDParam)
+	if err != nil {
+		return 0, err
+	}
+
+	return applicationID, nil
 }
 
 func trimPtr(value *string) {

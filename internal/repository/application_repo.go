@@ -9,6 +9,8 @@ import (
 )
 
 var ErrAlreadyApplied = errors.New("already applied to this job")
+var ErrApplicationNotFound = errors.New("application not found")
+var ErrEmployerNotAllowed = errors.New("employer is not allowed to update this application")
 
 type ApplicationRepository struct {
 	DB *sql.DB
@@ -88,4 +90,46 @@ func (r *ApplicationRepository) GetApplicationsByJobID(jobID int) ([]models.Appl
 	}
 
 	return applications, nil
+}
+
+func (r *ApplicationRepository) UpdateApplicationStatus(applicationID, employerID int, status string) (*models.Application, error) {
+	if r == nil || r.DB == nil {
+		return nil, errors.New("database is not configured")
+	}
+
+	query := `
+		UPDATE applications AS a
+		SET status = $3
+		FROM jobs AS j
+		WHERE a.id = $1
+		  AND a.job_id = j.id
+		  AND j.posted_by = $2
+		RETURNING a.id, a.job_id, a.user_id, a.status, a.created_at
+	`
+
+	var application models.Application
+	err := r.DB.QueryRow(query, applicationID, employerID, status).Scan(
+		&application.ID,
+		&application.JobID,
+		&application.UserID,
+		&application.Status,
+		&application.CreatedAt,
+	)
+	if err == nil {
+		return &application, nil
+	}
+
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	var exists int
+	if checkErr := r.DB.QueryRow(`SELECT 1 FROM applications WHERE id = $1`, applicationID).Scan(&exists); checkErr != nil {
+		if errors.Is(checkErr, sql.ErrNoRows) {
+			return nil, ErrApplicationNotFound
+		}
+		return nil, checkErr
+	}
+
+	return nil, ErrEmployerNotAllowed
 }

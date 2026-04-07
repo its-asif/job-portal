@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/its-asif/job-portal/internal/auth"
+	"github.com/its-asif/job-portal/internal/middleware"
 	"github.com/its-asif/job-portal/internal/models"
 	"github.com/its-asif/job-portal/internal/repository"
 	"golang.org/x/crypto/bcrypt"
@@ -57,6 +59,11 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	if req.Role == "" {
 		req.Role = "jobseeker"
+	}
+
+	if req.Role != "employer" && req.Role != "jobseeker" {
+		respondWithError(w, http.StatusBadRequest, "role must be employer or jobseeker")
+		return
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -119,7 +126,13 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, map[string]string{"message": "login successful"})
+	token := auth.GenerateToken(user.ID, user.Role)
+	if token == "" {
+		respondWithError(w, http.StatusInternalServerError, "failed to generate token")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]string{"token": token})
 }
 
 func (h *UserHandler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
@@ -158,6 +171,32 @@ func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, err := h.Repo.GetUserByID(userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			respondWithError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "failed to fetch user")
+		return
+	}
+
+	user.Password = ""
+	respondWithJSON(w, http.StatusOK, user)
+}
+
+func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
+	if h.Repo == nil {
+		respondWithError(w, http.StatusInternalServerError, "database is not configured")
+		return
+	}
+
+	claims, ok := middleware.GetClaimsFromContext(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	user, err := h.Repo.GetUserByID(claims.UserID)
 	if err != nil {
 		if errors.Is(err, repository.ErrUserNotFound) {
 			respondWithError(w, http.StatusNotFound, "user not found")

@@ -24,6 +24,7 @@ services:
         condition: service_healthy
     environment:
       DB_URL: postgres://postgres:postgres@db:5432/job_portal?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-please-change}
     ports:
       - "8080:8080"
 

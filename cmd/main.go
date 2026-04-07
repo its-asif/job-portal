@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/its-asif/job-portal/db"
 	"github.com/its-asif/job-portal/internal/handlers"
+	"github.com/its-asif/job-portal/internal/middleware"
 	"github.com/its-asif/job-portal/internal/repository"
 )
 
@@ -44,13 +45,24 @@ func main() {
 	jobRepo := repository.NewJobRepository(dbConn)
 	applicationRepo := repository.NewApplicationRepository(dbConn)
 	jobHandler := handlers.NewJobHandler(jobRepo, applicationRepo)
-	r.HandleFunc("/jobs", jobHandler.CreateJob).Methods(http.MethodPost)
 	r.HandleFunc("/jobs", jobHandler.GetAllJobs).Methods(http.MethodGet)
 	r.HandleFunc("/jobs/{id}", jobHandler.GetJobByID).Methods(http.MethodGet)
-	r.HandleFunc("/jobs/{id}", jobHandler.DeleteJob).Methods(http.MethodDelete)
 	r.HandleFunc("/jobs/{id}", jobHandler.UpdateJob).Methods(http.MethodPut)
-	r.HandleFunc("/jobs/{id}/apply", jobHandler.ApplyToJob).Methods(http.MethodPost)
 	r.HandleFunc("/jobs/{id}/applications", jobHandler.GetApplicationsByJobID).Methods(http.MethodGet)
+
+	protected := r.PathPrefix("/").Subrouter()
+	protected.Use(middleware.AuthMiddleware)
+	protected.HandleFunc("/me", userHandler.GetMe).Methods(http.MethodGet)
+
+	employerOnly := protected.PathPrefix("/").Subrouter()
+	employerOnly.Use(middleware.RequireRole("employer"))
+	employerOnly.HandleFunc("/jobs", jobHandler.CreateJob).Methods(http.MethodPost)
+	employerOnly.HandleFunc("/jobs/{id}", jobHandler.DeleteJob).Methods(http.MethodDelete)
+	employerOnly.HandleFunc("/applications/{id}/status", jobHandler.UpdateApplicationStatus).Methods(http.MethodPut)
+
+	jobseekerOnly := protected.PathPrefix("/").Subrouter()
+	jobseekerOnly.Use(middleware.RequireRole("jobseeker"))
+	jobseekerOnly.HandleFunc("/jobs/{id}/apply", jobHandler.ApplyToJob).Methods(http.MethodPost)
 
 	log.Println("server started on :8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {
