@@ -8,4 +8,7 @@ require (
 	golang.org/x/crypto v0.49.0
 )
 
-require github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
+require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
+)
