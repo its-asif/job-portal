@@ -74,6 +74,8 @@ func (r *UserRepository) GetUserByEmail(email string) (*models.User, error) {
 	return &user, nil
 }
 
+
+
 func (r *UserRepository) GetUserByID(id int) (*models.User, error) {
 	if r == nil || r.DB == nil {
 		return nil, errors.New("database is not configured")

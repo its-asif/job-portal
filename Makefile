@@ -5,7 +5,7 @@ MIGRATE_IMAGE ?= migrate/migrate:v4.18.3
 MIGRATIONS_DIR ?= $(CURDIR)/db/migrations
 MIGRATE_NETWORK ?= host
 
-.PHONY: migrate-up migrate-down
+.PHONY: migrate-up migrate-down test
 
 migrate-up:
 	@if [ -z "$(DB_URL)" ]; then echo "DB_URL is not set"; exit 1; fi
@@ -22,3 +22,6 @@ migrate-down:
 		-v "$(MIGRATIONS_DIR):/migrations" \
 		$(MIGRATE_IMAGE) \
 		-path=/migrations -database "$(DB_URL)" down 1
+
+test:
+	go test ./... -cover

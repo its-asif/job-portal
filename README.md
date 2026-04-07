@@ -9,6 +9,8 @@ Current implementation includes:
 - Jobs CRUD APIs
 - Job applications flow
 - Employer-only application status updates
+- Unit tests for handlers, middleware, and JWT
+- Repository integration test scaffold with TEST_DB_URL
 
 ## Tech Stack
 
@@ -101,6 +103,44 @@ Rollback one migration:
 make migrate-down DB_URL='<your_db_url>'
 ```
 
+## Testing
+
+Run all tests:
+
+```bash
+go test ./...
+```
+
+Run coverage:
+
+```bash
+go test ./... -cover
+```
+
+Run the Makefile test target:
+
+```bash
+make test
+```
+
+Run verbose tests and count passing test cases:
+
+```bash
+go test ./... -v | grep -c PASS
+```
+
+### Integration Test (Repository)
+
+The user repository integration test in `internal/repository/user_repo_test.go` requires a real PostgreSQL database.
+
+Set TEST_DB_URL and run:
+
+```bash
+TEST_DB_URL='postgres://postgres:postgres@localhost:5432/job_portal?sslmode=disable' go test ./internal/repository -v
+```
+
+If TEST_DB_URL is not set, the test is skipped intentionally.
+
 ## Authentication and Roles
 
 Login returns a JWT token:
@@ -156,4 +196,5 @@ Role rules:
 
 - PostgreSQL is the source of truth.
 - The project is being built incrementally by phases.
-- More features (tests, docs, redis, queue, search, grpc, CI/CD) are planned next.
+- Week 4 testing phase is implemented through handler tests, auth/JWT tests, and repository integration test scaffolding.
+- Next planned phases: swagger docs, redis, rabbitmq, elasticsearch, grpc, and CI/CD.
