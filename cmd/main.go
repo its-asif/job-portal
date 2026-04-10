@@ -15,12 +15,15 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
-	_ "github.com/its-asif/job-portal/docs"
 	"github.com/gorilla/mux"
 	"github.com/its-asif/job-portal/db"
+	_ "github.com/its-asif/job-portal/docs"
+	"github.com/its-asif/job-portal/internal/cache"
 	"github.com/its-asif/job-portal/internal/handlers"
 	"github.com/its-asif/job-portal/internal/middleware"
+	"github.com/its-asif/job-portal/internal/queue"
 	"github.com/its-asif/job-portal/internal/repository"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
@@ -40,6 +43,30 @@ func main() {
 		log.Println("database connected successfully")
 	}
 
+	redisClient, err := cache.NewRedisClient()
+	if err != nil {
+		log.Printf("redis ping failed: %v", err)
+	} else {
+		defer func() {
+			if closeErr := redisClient.Close(); closeErr != nil {
+				log.Printf("failed to close redis connection: %v", closeErr)
+			}
+		}()
+		log.Println("redis connected successfully")
+	}
+
+	rabbitClient, err := queue.NewRabbitMQClient()
+	if err != nil {
+		log.Printf("rabbitmq connection failed: %v", err)
+	} else {
+		defer func() {
+			if closeErr := rabbitClient.Close(); closeErr != nil {
+				log.Printf("failed to close rabbitmq connection: %v", closeErr)
+			}
+		}()
+		log.Println("rabbitmq connected successfully")
+	}
+
 	r := mux.NewRouter()
 	r.PathPrefix("/docs/").Handler(httpSwagger.WrapHandler)
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -49,14 +76,25 @@ func main() {
 
 	userRepo := repository.NewUserRepository(dbConn)
 	userHandler := handlers.NewUserHandler(userRepo)
-	r.HandleFunc("/register", userHandler.Register).Methods(http.MethodPost)
-	r.HandleFunc("/login", userHandler.Login).Methods(http.MethodPost)
+	userHandler.SetRedisClient(redisClient)
+
+	middleware.SetRedisClient(redisClient)
+
+	registerRateLimited := r.PathPrefix("/").Subrouter()
+	registerRateLimited.Use(middleware.RateLimit("register", 10, time.Minute))
+	registerRateLimited.HandleFunc("/register", userHandler.Register).Methods(http.MethodPost)
+
+	loginRateLimited := r.PathPrefix("/").Subrouter()
+	loginRateLimited.Use(middleware.RateLimit("login", 10, time.Minute))
+	loginRateLimited.HandleFunc("/login", userHandler.Login).Methods(http.MethodPost)
+
 	r.HandleFunc("/users", userHandler.GetAllUsers).Methods(http.MethodGet)
 	r.HandleFunc("/users/{id}", userHandler.GetUserByID).Methods(http.MethodGet)
 
 	jobRepo := repository.NewJobRepository(dbConn)
 	applicationRepo := repository.NewApplicationRepository(dbConn)
 	jobHandler := handlers.NewJobHandler(jobRepo, applicationRepo)
+	jobHandler.SetRedisClient(redisClient)
 	r.HandleFunc("/jobs", jobHandler.GetAllJobs).Methods(http.MethodGet)
 	r.HandleFunc("/jobs/{id}", jobHandler.GetJobByID).Methods(http.MethodGet)
 	r.HandleFunc("/jobs/{id}", jobHandler.UpdateJob).Methods(http.MethodPut)
@@ -65,6 +103,7 @@ func main() {
 	protected := r.PathPrefix("/").Subrouter()
 	protected.Use(middleware.AuthMiddleware)
 	protected.HandleFunc("/me", userHandler.GetMe).Methods(http.MethodGet)
+	protected.HandleFunc("/logout", userHandler.Logout).Methods(http.MethodPost)
 
 	employerOnly := protected.PathPrefix("/").Subrouter()
 	employerOnly.Use(middleware.RequireRole("employer"))

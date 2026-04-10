@@ -3,19 +3,23 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/its-asif/job-portal/internal/middleware"
 	"github.com/its-asif/job-portal/internal/models"
 	"github.com/its-asif/job-portal/internal/repository"
+	"github.com/redis/go-redis/v9"
 )
 
 type JobHandler struct {
 	Repo            *repository.JobRepository
 	ApplicationRepo *repository.ApplicationRepository
+	RedisClient     *redis.Client
 }
 
 type createJobRequest struct {
@@ -43,6 +47,10 @@ func NewJobHandler(repo *repository.JobRepository, applicationRepo *repository.A
 		Repo:            repo,
 		ApplicationRepo: applicationRepo,
 	}
+}
+
+func (h *JobHandler) SetRedisClient(client *redis.Client) {
+	h.RedisClient = client
 }
 
 // CreateJob godoc
@@ -101,6 +109,10 @@ func (h *JobHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.RedisClient != nil {
+		_ = h.RedisClient.Del(r.Context(), "jobs:all").Err()
+	}
+
 	respondWithJSON(w, http.StatusCreated, job)
 }
 
@@ -118,6 +130,16 @@ func (h *JobHandler) GetAllJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.RedisClient != nil {
+		if cached, err := h.RedisClient.Get(r.Context(), "jobs:all").Result(); err == nil {
+			var jobs []models.Job
+			if unmarshalErr := json.Unmarshal([]byte(cached), &jobs); unmarshalErr == nil {
+				respondWithJSON(w, http.StatusOK, jobs)
+				return
+			}
+		}
+	}
+
 	jobs, err := h.Repo.GetAllJobs()
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "failed to fetch jobs")
@@ -126,6 +148,12 @@ func (h *JobHandler) GetAllJobs(w http.ResponseWriter, r *http.Request) {
 
 	if jobs == nil {
 		jobs = make([]models.Job, 0)
+	}
+
+	if h.RedisClient != nil {
+		if payload, marshalErr := json.Marshal(jobs); marshalErr == nil {
+			_ = h.RedisClient.Set(r.Context(), "jobs:all", payload, 2*time.Minute).Err()
+		}
 	}
 
 	respondWithJSON(w, http.StatusOK, jobs)
@@ -249,6 +277,17 @@ func (h *JobHandler) GetJobByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cacheKey := fmt.Sprintf("jobs:%d", jobID)
+	if h.RedisClient != nil {
+		if cached, cacheErr := h.RedisClient.Get(r.Context(), cacheKey).Result(); cacheErr == nil {
+			var cachedJob models.Job
+			if unmarshalErr := json.Unmarshal([]byte(cached), &cachedJob); unmarshalErr == nil {
+				respondWithJSON(w, http.StatusOK, &cachedJob)
+				return
+			}
+		}
+	}
+
 	job, err := h.Repo.GetJobByID(jobID)
 	if err != nil {
 		if errors.Is(err, repository.ErrJobNotFound) {
@@ -257,6 +296,12 @@ func (h *JobHandler) GetJobByID(w http.ResponseWriter, r *http.Request) {
 		}
 		respondWithError(w, http.StatusInternalServerError, "failed to fetch job")
 		return
+	}
+
+	if h.RedisClient != nil {
+		if payload, marshalErr := json.Marshal(job); marshalErr == nil {
+			_ = h.RedisClient.Set(r.Context(), cacheKey, payload, 2*time.Minute).Err()
+		}
 	}
 
 	respondWithJSON(w, http.StatusOK, job)
@@ -295,6 +340,10 @@ func (h *JobHandler) DeleteJob(w http.ResponseWriter, r *http.Request) {
 		}
 		respondWithError(w, http.StatusInternalServerError, "failed to delete job")
 		return
+	}
+
+	if h.RedisClient != nil {
+		_ = h.RedisClient.Del(r.Context(), "jobs:all", fmt.Sprintf("jobs:%d", jobID)).Err()
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -355,6 +404,10 @@ func (h *JobHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
 		}
 		respondWithError(w, http.StatusInternalServerError, "failed to update job")
 		return
+	}
+
+	if h.RedisClient != nil {
+		_ = h.RedisClient.Del(r.Context(), "jobs:all", fmt.Sprintf("jobs:%d", jobID)).Err()
 	}
 
 	respondWithJSON(w, http.StatusOK, updatedJob)

@@ -6,17 +6,20 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/its-asif/job-portal/internal/auth"
 	"github.com/its-asif/job-portal/internal/middleware"
 	"github.com/its-asif/job-portal/internal/models"
 	"github.com/its-asif/job-portal/internal/repository"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type UserHandler struct {
-	Repo *repository.UserRepository
+	Repo        *repository.UserRepository
+	RedisClient *redis.Client
 }
 
 type registerRequest struct {
@@ -33,6 +36,10 @@ type loginRequest struct {
 
 func NewUserHandler(repo *repository.UserRepository) *UserHandler {
 	return &UserHandler{Repo: repo}
+}
+
+func (h *UserHandler) SetRedisClient(client *redis.Client) {
+	h.RedisClient = client
 }
 
 // Register godoc
@@ -262,6 +269,54 @@ func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 
 	user.Password = ""
 	respondWithJSON(w, http.StatusOK, user)
+}
+
+// Logout godoc
+// @Summary Logout user
+// @Description Revoke current JWT by adding it to Redis blacklist.
+// @Tags auth
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} map[string]string
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 503 {object} models.ErrorResponse
+// @Router /logout [post]
+func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if h.RedisClient == nil {
+		respondWithError(w, http.StatusServiceUnavailable, "redis is not configured")
+		return
+	}
+
+	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
+	parts := strings.SplitN(authorization, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		respondWithError(w, http.StatusUnauthorized, "invalid authorization header")
+		return
+	}
+
+	token := strings.TrimSpace(parts[1])
+	if token == "" {
+		respondWithError(w, http.StatusUnauthorized, "missing bearer token")
+		return
+	}
+
+	claims, err := auth.ValidateToken(token)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "invalid or expired token")
+		return
+	}
+
+	ttl := time.Until(claims.ExpiresAt.Time)
+	if ttl <= 0 {
+		ttl = time.Second
+	}
+
+	if err := h.RedisClient.Set(r.Context(), "blacklist:"+token, "1", ttl).Err(); err != nil {
+		respondWithError(w, http.StatusServiceUnavailable, "failed to revoke token")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]string{"message": "logout successful"})
 }
 
 func parseUserID(r *http.Request) (int, error) {

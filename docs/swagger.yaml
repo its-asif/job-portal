@@ -455,6 +455,31 @@ paths:
       summary: Login user
       tags:
       - auth
+  /logout:
+    post:
+      description: Revoke current JWT by adding it to Redis blacklist.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Logout user
+      tags:
+      - auth
   /me:
     get:
       description: Return profile of currently authenticated user.

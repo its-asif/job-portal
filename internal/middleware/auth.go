@@ -6,11 +6,18 @@ import (
 	"strings"
 
 	"github.com/its-asif/job-portal/internal/auth"
+	"github.com/redis/go-redis/v9"
 )
 
 type contextKey string
 
 const userClaimsContextKey contextKey = "userClaims"
+
+var redisClient *redis.Client
+
+func SetRedisClient(client *redis.Client) {
+	redisClient = client
+}
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -30,6 +37,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		if token == "" {
 			respondUnauthorized(w, "missing bearer token")
 			return
+		}
+
+		if redisClient != nil {
+			blacklisted, err := redisClient.Exists(r.Context(), "blacklist:"+token).Result()
+			if err == nil && blacklisted > 0 {
+				respondUnauthorized(w, "token has been revoked")
+				return
+			}
 		}
 
 		claims, err := auth.ValidateToken(token)
