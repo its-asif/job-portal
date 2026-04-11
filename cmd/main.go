@@ -11,6 +11,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -30,6 +31,8 @@ import (
 
 func main() {
 	loadEnvFile(".env")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	dbConn, err := db.Connect()
 	if err != nil {
@@ -93,8 +96,14 @@ func main() {
 
 	jobRepo := repository.NewJobRepository(dbConn)
 	applicationRepo := repository.NewApplicationRepository(dbConn)
+	outboxRepo := repository.NewOutboxRepository(dbConn)
 	jobHandler := handlers.NewJobHandler(jobRepo, applicationRepo)
 	jobHandler.SetRedisClient(redisClient)
+	jobHandler.SetUserRepo(userRepo)
+	jobHandler.SetOutboxRepo(outboxRepo)
+	jobHandler.SetQueuePublisher(rabbitClient)
+
+	queue.StartOutboxRetryWorker(ctx, outboxRepo, rabbitClient, 10*time.Second)
 	r.HandleFunc("/jobs", jobHandler.GetAllJobs).Methods(http.MethodGet)
 	r.HandleFunc("/jobs/{id}", jobHandler.GetJobByID).Methods(http.MethodGet)
 	r.HandleFunc("/jobs/{id}", jobHandler.UpdateJob).Methods(http.MethodPut)

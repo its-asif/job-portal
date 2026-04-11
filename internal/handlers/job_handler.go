@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,7 +20,12 @@ import (
 type JobHandler struct {
 	Repo            *repository.JobRepository
 	ApplicationRepo *repository.ApplicationRepository
-	RedisClient     *redis.Client
+	UserRepo        *repository.UserRepository
+	OutboxRepo      *repository.OutboxRepository
+	QueuePublisher  interface {
+		Publish(queueName, message string) error
+	}
+	RedisClient *redis.Client
 }
 
 type createJobRequest struct {
@@ -51,6 +57,20 @@ func NewJobHandler(repo *repository.JobRepository, applicationRepo *repository.A
 
 func (h *JobHandler) SetRedisClient(client *redis.Client) {
 	h.RedisClient = client
+}
+
+func (h *JobHandler) SetUserRepo(repo *repository.UserRepository) {
+	h.UserRepo = repo
+}
+
+func (h *JobHandler) SetOutboxRepo(repo *repository.OutboxRepository) {
+	h.OutboxRepo = repo
+}
+
+func (h *JobHandler) SetQueuePublisher(publisher interface {
+	Publish(queueName, message string) error
+}) {
+	h.QueuePublisher = publisher
 }
 
 // CreateJob godoc
@@ -216,7 +236,44 @@ func (h *JobHandler) ApplyToJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.publishNewApplicationEvent(r.Context(), application)
+
 	respondWithJSON(w, http.StatusCreated, application)
+}
+
+func (h *JobHandler) publishNewApplicationEvent(ctx context.Context, application *models.Application) {
+	if application == nil {
+		return
+	}
+
+	applicantEmail := ""
+	if h.UserRepo != nil {
+		if user, err := h.UserRepo.GetUserByID(application.UserID); err == nil {
+			applicantEmail = user.Email
+		}
+	}
+
+	payload := map[string]interface{}{
+		"type":            "new_application",
+		"job_id":          application.JobID,
+		"applicant_id":    application.UserID,
+		"applicant_email": applicantEmail,
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	if h.QueuePublisher != nil {
+		if err := h.QueuePublisher.Publish("notifications", string(payloadBytes)); err == nil {
+			return
+		}
+	}
+
+	if h.OutboxRepo != nil {
+		_ = h.OutboxRepo.CreateEvent("new_application", "notifications", payloadBytes)
+	}
 }
 
 // GetApplicationsByJobID godoc
