@@ -9,6 +9,11 @@ Current implementation includes:
 - Jobs CRUD APIs
 - Job applications flow
 - Employer-only application status updates
+- Redis caching for jobs, JWT blacklist logout, and auth rate limiting
+- RabbitMQ event publishing on job apply
+- Background worker for email delivery with SMTP (Mailtrap)
+- Outbox fallback + async retry for RabbitMQ publish failures
+- Dead-letter queue flow for permanently failed notifications
 - Unit tests for handlers, middleware, and JWT
 - Repository integration test scaffold with TEST_DB_URL
 - Swagger/OpenAPI docs with Swagger UI
@@ -18,13 +23,17 @@ Current implementation includes:
 - Go
 - Gorilla Mux
 - PostgreSQL
+- Redis
+- RabbitMQ
 - JWT (github.com/golang-jwt/jwt/v5)
+- SMTP mail delivery (gopkg.in/gomail.v2)
 - Docker and Docker Compose
 - golang-migrate (via Docker image)
 
 ## Project Structure
 
 - cmd/main.go: API entrypoint
+- cmd/worker/main.go: notification worker entrypoint
 - db/db.go: database connection
 - db/migrations: SQL migrations
 - internal/models: data models
@@ -32,6 +41,9 @@ Current implementation includes:
 - internal/handlers: HTTP handlers
 - internal/middleware: auth and role middleware
 - internal/auth: JWT helpers
+- internal/cache: Redis client
+- internal/queue: RabbitMQ client and outbox retry worker
+- internal/email: SMTP email sender
 
 ## Prerequisites
 
@@ -45,15 +57,22 @@ Copy the example values into your .env:
 
 - DB_URL: PostgreSQL connection string
 - JWT_SECRET: secret used for signing JWT tokens
+- REDIS_URL: Redis connection URL
+- RABBITMQ_URL: RabbitMQ AMQP connection URL
+- MAIL_HOST: SMTP host (Mailtrap sandbox host for dev)
+- MAIL_PORT: SMTP port
+- MAIL_USERNAME: SMTP username
+- MAIL_PASSWORD: SMTP password
+- MAIL_FROM: sender email address
 
 Example values are available in .env.example.
 
 ## Run Locally (Go)
 
-1. Start PostgreSQL:
+1. Start services:
 
 ```bash
-docker compose up -d db
+docker compose up -d db redis rabbitmq
 ```
 
 2. Run migrations (from host to local DB):
@@ -68,14 +87,20 @@ make migrate-up DB_URL='postgres://postgres:postgres@localhost:5432/job_portal?s
 go run cmd/main.go
 ```
 
+4. Start worker (for RabbitMQ email notifications):
+
+```bash
+go run cmd/worker/main.go
+```
+
 API runs on http://localhost:8080.
 
 ## Run with Docker Compose
 
-1. Start database:
+1. Start core services:
 
 ```bash
-docker compose up -d db
+docker compose up -d db redis rabbitmq
 ```
 
 2. Run migrations against db container network:
@@ -84,10 +109,16 @@ docker compose up -d db
 make migrate-up DB_URL='postgres://postgres:postgres@db:5432/job_portal?sslmode=disable' MIGRATE_NETWORK=talentdock_default
 ```
 
-3. Start API container:
+3. Start API and worker containers:
 
 ```bash
-JWT_SECRET='dev-secret-please-change' docker compose up -d --build api
+JWT_SECRET='dev-secret-please-change' docker compose up -d --build api worker
+```
+
+4. RabbitMQ Management UI:
+
+```text
+http://localhost:15673
 ```
 
 ## Migration Commands
@@ -202,6 +233,34 @@ Role rules:
 
 - POST /jobs/{id}/apply
 
+## RabbitMQ Workflow
+
+1. Jobseeker applies to a job via POST /jobs/{id}/apply.
+2. API writes application to PostgreSQL first.
+3. API publishes `new_application` event to `notifications` queue.
+4. If publish fails, event is stored in `outbox_events` table.
+5. Outbox retry worker republishes pending events asynchronously.
+6. Worker consumes `notifications` queue and sends email via SMTP.
+7. On email failure, message is retried up to 3 times.
+8. After max retries, message moves to `failed_notifications` queue.
+
+## RabbitMQ and Email Test
+
+1. Start services and run API + worker.
+2. Apply to a job as a jobseeker.
+3. Watch worker logs:
+
+```bash
+docker compose logs -f worker
+```
+
+4. Verify mail in Mailtrap inbox.
+5. Verify queue state if needed:
+
+```bash
+docker exec job-portal-rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged
+```
+
 ## Quick Test Flow
 
 1. Register employer and jobseeker users.
@@ -216,4 +275,5 @@ Role rules:
 - PostgreSQL is the source of truth.
 - The project is being built incrementally by phases.
 - Week 4 testing phase is implemented through handler tests, auth/JWT tests, and repository integration test scaffolding.
-- Next planned phases: swagger docs, redis, rabbitmq, elasticsearch, grpc, and CI/CD.
+- Redis and RabbitMQ phases are implemented with outbox and worker-based notifications.
+- Next planned phases: elasticsearch, grpc, and CI/CD.
